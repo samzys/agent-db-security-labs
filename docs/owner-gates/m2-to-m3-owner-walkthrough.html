@@ -1,0 +1,1143 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="M2 到 M3 的中文互动教学 walkthrough：亲手识别 A-01/P0 泄漏、A-01/P3 阻断与 A-05/P3 Gateway bypass，完成 Agent 数据库安全 owner gate。">
+  <title>M2 → M3：亲手识别授权边界</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #e9f0ed;
+      --paper: #fbfcfa;
+      --ink: #172137;
+      --muted: #5d6877;
+      --line: #c8d3d0;
+      --navy: #233d68;
+      --teal: #126b74;
+      --teal-soft: #dcefee;
+      --red: #b33a34;
+      --red-soft: #f8e3df;
+      --amber: #9b6814;
+      --amber-soft: #f5eacb;
+      --green: #39724e;
+      --green-soft: #e0eee4;
+      --terminal: #111b2e;
+      --terminal-text: #dce8ea;
+      --shadow: 0 22px 56px rgba(23, 33, 55, 0.10);
+      --radius: 10px;
+      --display: "Avenir Next Condensed", "Arial Narrow", "PingFang SC", sans-serif;
+      --body: Charter, "Iowan Old Style", "Songti SC", "Noto Serif CJK SC", serif;
+      --ui: "Avenir Next", "Segoe UI", "PingFang SC", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(rgba(35, 61, 104, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(35, 61, 104, 0.045) 1px, transparent 1px),
+        var(--canvas);
+      background-size: 28px 28px;
+      color: var(--ink);
+      font-family: var(--body);
+      line-height: 1.68;
+    }
+
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    a { color: var(--teal); text-underline-offset: 3px; }
+    :focus-visible { outline: 3px solid #e6a637; outline-offset: 3px; }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 270px minmax(0, 920px);
+      gap: 28px;
+      width: min(1240px, calc(100% - 32px));
+      margin: 24px auto 72px;
+      align-items: start;
+    }
+
+    .rail {
+      position: sticky;
+      top: 20px;
+      padding: 22px 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(251, 252, 250, 0.94);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      font-family: var(--ui);
+    }
+
+    .rail-mark {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      color: var(--navy);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .rail-mark::before {
+      content: "";
+      width: 11px;
+      height: 11px;
+      border: 3px solid var(--red);
+      border-radius: 50%;
+      box-shadow: 0 0 0 4px var(--red-soft);
+    }
+
+    .lock-state {
+      margin: 0 0 20px;
+      padding: 12px;
+      border: 1px solid #e5b3aa;
+      border-radius: 8px;
+      background: var(--red-soft);
+      color: #772924;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .progress-track {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 99px;
+      background: #dbe4e1;
+    }
+
+    .progress-fill {
+      width: 0;
+      height: 100%;
+      background: var(--teal);
+      transition: width 240ms ease;
+    }
+
+    .rail nav { margin: 22px 0; }
+    .rail nav a {
+      display: block;
+      padding: 8px 10px;
+      border-left: 2px solid var(--line);
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-decoration: none;
+    }
+    .rail nav a:hover { border-left-color: var(--teal); color: var(--teal); }
+
+    .reset-button {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .page {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      position: relative;
+      padding: 54px clamp(24px, 6vw, 68px) 44px;
+      border-bottom: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 85% 5%, rgba(18,107,116,.18), transparent 32%),
+        var(--paper);
+    }
+
+    .hero::after {
+      content: "P0  →  P3  ↘  BYPASS";
+      position: absolute;
+      right: -12px;
+      bottom: 4px;
+      color: rgba(35, 61, 104, 0.055);
+      font-family: var(--mono);
+      font-size: clamp(2.1rem, 7vw, 5.7rem);
+      font-weight: 900;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      position: relative;
+      z-index: 1;
+      margin: 0 0 10px;
+      color: var(--teal);
+      font-family: var(--ui);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 {
+      font-family: var(--display);
+      font-weight: 750;
+      line-height: 1.12;
+      letter-spacing: -0.02em;
+    }
+
+    h1 {
+      position: relative;
+      z-index: 1;
+      max-width: 720px;
+      margin: 0;
+      font-size: clamp(2.4rem, 7vw, 5.4rem);
+      overflow-wrap: anywhere;
+    }
+
+    h1 span { color: var(--red); }
+
+    .hero-lead {
+      position: relative;
+      z-index: 1;
+      max-width: 680px;
+      margin: 22px 0 0;
+      color: var(--muted);
+      font-size: 1.12rem;
+    }
+
+    .hero-facts {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 30px;
+      font-family: var(--ui);
+    }
+
+    .fact {
+      padding: 14px 16px;
+      border-top: 3px solid var(--navy);
+      background: #f2f6f4;
+    }
+    .fact b { display: block; color: var(--navy); font-size: 1.35rem; }
+    .fact span { color: var(--muted); font-size: 0.78rem; }
+
+    .content { padding: 8px clamp(24px, 6vw, 68px) 70px; }
+
+    .content, .hero, section, .command, .boundary-lab { min-width: 0; }
+
+    section {
+      padding: 46px 0 18px;
+      scroll-margin-top: 22px;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: 62px 1fr;
+      gap: 16px;
+      align-items: start;
+      margin-bottom: 26px;
+    }
+
+    .step-number {
+      display: grid;
+      place-items: center;
+      width: 54px;
+      height: 54px;
+      border: 1px solid var(--navy);
+      color: var(--navy);
+      font-family: var(--mono);
+      font-weight: 800;
+    }
+
+    h2 { margin: 0; font-size: clamp(1.8rem, 4vw, 2.7rem); }
+    h3 { margin: 1.7em 0 .55em; color: var(--navy); font-size: 1.28rem; }
+    .section-kicker { margin: 6px 0 0; color: var(--muted); }
+
+    .notice {
+      margin: 20px 0;
+      padding: 16px 18px;
+      border-left: 5px solid var(--amber);
+      background: var(--amber-soft);
+    }
+    .notice.danger { border-left-color: var(--red); background: var(--red-soft); }
+    .notice.good { border-left-color: var(--green); background: var(--green-soft); }
+    .notice b { font-family: var(--ui); }
+
+    .check-row {
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 10px;
+      align-items: start;
+      margin: 10px 0;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      background: #f7f9f8;
+      font-family: var(--ui);
+      font-size: 0.92rem;
+    }
+    .check-row input { width: 18px; height: 18px; accent-color: var(--teal); }
+
+    .command {
+      position: relative;
+      margin: 16px 0;
+      border: 1px solid #293850;
+      border-radius: var(--radius);
+      background: var(--terminal);
+      color: var(--terminal-text);
+      font-family: var(--mono);
+      font-size: 0.85rem;
+    }
+
+    .command-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 9px 8px 14px;
+      border-bottom: 1px solid #2b3b54;
+      color: #9fb3c2;
+      font-family: var(--ui);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .copy-button {
+      padding: 6px 9px;
+      border: 1px solid #4c6379;
+      border-radius: 5px;
+      background: #1b2a42;
+      color: #dce8ea;
+      font-size: 0.75rem;
+    }
+
+    pre {
+      max-width: 100%;
+      overflow-x: auto;
+      margin: 0;
+      padding: 17px;
+      white-space: pre;
+      line-height: 1.52;
+    }
+    code { font-family: var(--mono); }
+    p code, li code {
+      padding: .12em .34em;
+      border-radius: 4px;
+      background: #e4ebea;
+      color: #7b2b2b;
+      font-size: .88em;
+    }
+
+    .boundary-lab {
+      margin: 26px 0;
+      padding: 20px;
+      border: 1px solid #9fb0b4;
+      background: #eef4f2;
+    }
+
+    .scenario-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 22px;
+    }
+
+    .scenario-tab {
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      color: var(--muted);
+      font-family: var(--ui);
+      font-size: .86rem;
+      font-weight: 700;
+    }
+    .scenario-tab[aria-selected="true"] {
+      border-color: var(--navy);
+      background: var(--navy);
+      color: white;
+    }
+
+    .boundary-map {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(90px, 1fr));
+      gap: 12px;
+      align-items: center;
+      min-height: 164px;
+    }
+
+    .boundary-map::before {
+      content: "";
+      position: absolute;
+      left: 6%;
+      right: 6%;
+      top: 57px;
+      height: 4px;
+      background: #9eaaa9;
+    }
+
+    .node {
+      position: relative;
+      z-index: 2;
+      min-height: 104px;
+      padding: 12px 9px;
+      border: 2px solid #9eaaa9;
+      background: var(--paper);
+      text-align: center;
+      font-family: var(--ui);
+    }
+    .node strong { display: block; margin-bottom: 6px; color: var(--navy); }
+    .node span { color: var(--muted); font-size: .76rem; }
+    .node.active-pass { border-color: var(--red); background: var(--red-soft); }
+    .node.active-stop { border-color: var(--green); background: var(--green-soft); }
+    .node.dim { opacity: .35; }
+
+    .bypass-path {
+      display: none;
+      position: absolute;
+      z-index: 3;
+      left: 20%;
+      right: 4%;
+      bottom: 4px;
+      height: 54px;
+      border-right: 4px dashed var(--amber);
+      border-bottom: 4px dashed var(--amber);
+      border-left: 4px dashed var(--amber);
+      border-radius: 0 0 20px 20px;
+    }
+    .bypass-path.visible { display: block; }
+    .bypass-label {
+      position: absolute;
+      left: 50%;
+      bottom: -15px;
+      transform: translateX(-50%);
+      padding: 3px 8px;
+      background: var(--amber-soft);
+      color: var(--amber);
+      font-family: var(--ui);
+      font-size: .73rem;
+      font-weight: 800;
+    }
+
+    .outcome {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 12px;
+      align-items: start;
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+    .outcome-badge {
+      padding: 6px 10px;
+      border-radius: 3px;
+      background: var(--red);
+      color: white;
+      font-family: var(--ui);
+      font-size: .76rem;
+      font-weight: 800;
+      letter-spacing: .06em;
+    }
+    .outcome-badge.contained { background: var(--green); }
+    .outcome-badge.bypassed { background: var(--amber); }
+    .outcome p { margin: 0; }
+
+    .evidence-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin: 22px 0;
+    }
+    .evidence-card {
+      padding: 15px;
+      border: 1px solid var(--line);
+      background: #f7f9f8;
+    }
+    .evidence-card b { display: block; color: var(--navy); font-family: var(--ui); }
+    .evidence-card small { color: var(--muted); }
+
+    textarea, .text-input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #a9b8b6;
+      border-radius: 5px;
+      background: #fff;
+      color: var(--ink);
+      font-family: var(--ui);
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    label.field-label {
+      display: block;
+      margin: 16px 0 6px;
+      color: var(--navy);
+      font-family: var(--ui);
+      font-size: .86rem;
+      font-weight: 750;
+    }
+    .save-hint { color: var(--muted); font-family: var(--ui); font-size: .76rem; }
+
+    .quiz {
+      margin: 18px 0;
+      padding: 18px;
+      border: 1px solid var(--line);
+      background: #f7f9f8;
+    }
+    .quiz-question { margin: 0 0 12px; font-weight: 700; }
+    .quiz-options { display: grid; gap: 8px; }
+    .quiz-option {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--ink);
+      text-align: left;
+    }
+    .quiz-option.correct { border-color: var(--green); background: var(--green-soft); }
+    .quiz-option.wrong { border-color: var(--red); background: var(--red-soft); }
+    .quiz-feedback { min-height: 1.5em; margin: 10px 0 0; color: var(--muted); }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin: 20px 0;
+    }
+    .metric {
+      padding: 14px;
+      border-left: 4px solid var(--teal);
+      background: var(--teal-soft);
+    }
+    .metric b { display: block; font-family: var(--mono); font-size: .84rem; }
+
+    .decision-box {
+      margin-top: 24px;
+      padding: 20px;
+      border: 2px solid var(--navy);
+      background: #f4f7f7;
+    }
+    .decision-options { display: grid; gap: 10px; margin: 16px 0; }
+    .decision-options label {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: white;
+      font-family: var(--ui);
+    }
+    .decision-options input { accent-color: var(--teal); }
+
+    .primary-button {
+      padding: 11px 15px;
+      border: 0;
+      border-radius: 5px;
+      background: var(--navy);
+      color: white;
+      font-family: var(--ui);
+      font-weight: 750;
+    }
+    .primary-button:disabled { cursor: not-allowed; opacity: .45; }
+
+    .record-output {
+      display: none;
+      margin-top: 16px;
+    }
+    .record-output.visible { display: block; }
+
+    .toast {
+      position: fixed;
+      z-index: 50;
+      right: 20px;
+      bottom: 20px;
+      max-width: min(360px, calc(100% - 40px));
+      padding: 12px 16px;
+      border-radius: 7px;
+      background: var(--navy);
+      color: white;
+      font-family: var(--ui);
+      font-size: .86rem;
+      opacity: 0;
+      transform: translateY(12px);
+      pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    .footnote {
+      padding: 20px clamp(24px, 6vw, 68px);
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-family: var(--ui);
+      font-size: .8rem;
+    }
+
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: minmax(0, 1fr); width: min(920px, calc(100% - 20px)); margin-top: 10px; }
+      .rail { position: static; }
+      .rail nav { display: none; }
+      .hero-facts, .evidence-cards { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 680px) {
+      .shell { width: 100%; margin: 0; }
+      .rail, .page { border-left: 0; border-right: 0; border-radius: 0; }
+      .rail { border-top: 0; }
+      .hero, .content { padding-left: 20px; padding-right: 20px; }
+      h1 { font-size: clamp(2.15rem, 10vw, 2.7rem); }
+      .boundary-map { grid-template-columns: 1fr; }
+      .boundary-map::before { left: 50%; right: auto; top: 4%; bottom: 4%; width: 4px; height: auto; }
+      .bypass-path { left: 12px; right: 12px; bottom: 45px; height: 120px; }
+      .metric-grid { grid-template-columns: 1fr; }
+      .section-head { grid-template-columns: 46px 1fr; }
+      .step-number { width: 42px; height: 42px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail" aria-label="学习进度">
+      <div class="rail-mark">Owner evidence lab</div>
+      <p class="lock-state">M3 当前仍锁定。页面不会替你授权。</p>
+      <div class="progress-label"><span>亲手完成进度</span><strong id="progressText">0 / 13</strong></div>
+      <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="progressFill"></div></div>
+      <nav>
+        <a href="#orientation">00 · 先认清目标</a>
+        <a href="#baseline">01 · 建立基线</a>
+        <a href="#a01">02 · 识别 A-01</a>
+        <a href="#a05">03 · 识别 A-05</a>
+        <a href="#fixture">04 · 修改 Fixture</a>
+        <a href="#explain">05 · 自己讲明白</a>
+        <a href="#record">06 · 形成完成记录</a>
+      </nav>
+      <button class="reset-button" id="resetProgress" type="button">清除本页本地进度</button>
+    </aside>
+
+    <main class="page">
+      <header class="hero">
+        <p class="eyebrow">M2 → M3 interactive walkthrough</p>
+        <h1>亲手识别：哪里挡住了攻击，哪里只是<span>看起来安全</span></h1>
+        <p class="hero-lead">这不是阅读测验。你要运行真实 harness、追踪证据链、修改一次攻击 fixture，再用自己的话解释为什么 Gateway containment 不等于数据库边界。</p>
+        <div class="hero-facts">
+          <div class="fact"><b>60–90 min</b><span>预计完成时间</span></div>
+          <div class="fact"><b>3 outcomes</b><span>P0 泄漏 / P3 阻断 / P3 绕过</span></div>
+          <div class="fact"><b>1 owner</b><span>最终解释与授权只能由仓库所有者完成</span></div>
+        </div>
+      </header>
+
+      <div class="content">
+        <section id="orientation">
+          <div class="section-head">
+            <div class="step-number">00</div>
+            <div><h2>先认清本次任务</h2><p class="section-kicker">你不是来证明测试能跑，而是证明自己能解释控制边界。</p></div>
+          </div>
+
+          <div class="notice danger"><b>安全门：</b>测试全部 PASS 也不会自动解锁 M3。只有你完成观察、修改、解释和记录，并明确写下决定，owner gate 才成立。</div>
+
+          <div class="evidence-cards">
+            <div class="evidence-card"><b>A-01 / P0</b><small>自由 SQL 执行，越权数据穿过边界。你要能指出 leak evidence。</small></div>
+            <div class="evidence-card"><b>A-01 / P3</b><small>Gateway 内的 task capability 拒绝未委托自由 SQL。你要能指出 deny 和未执行证据。</small></div>
+            <div class="evidence-card"><b>A-05 / P3</b><small>攻击绕过 Gateway，宽权限 DB role 仍泄漏。你要解释 P4 为什么必须进入 PostgreSQL。</small></div>
+          </div>
+
+          <label class="check-row"><input type="checkbox" data-progress="orientation"><span>我理解：目标是识别并解释三种 outcome，不是照抄命令输出。</span></label>
+        </section>
+
+        <section id="baseline">
+          <div class="section-head">
+            <div class="step-number">01</div>
+            <div><h2>建立可相信的基线</h2><p class="section-kicker">先确认仓库、工作区和两套报告都处于可解释状态。</p></div>
+          </div>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>进入正确仓库</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>cd agent-db-security-labs</code></pre>
+          </div>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>检查并运行基线</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>git status --short --branch
+make m1-test
+make m2-test</code></pre>
+          </div>
+
+          <div class="notice"><b>当前要识别的工作区状态：</b><code>README.md</code>、<code>docs/owner-gates/</code> 和 <code>tests/test_public_identity_boundary.py</code> 是已知的 gate 准备改动。若你看到其他不认识的文件，先停下，不要 reset。</div>
+
+          <label class="check-row"><input type="checkbox" data-progress="baseline-status"><span>我亲自看过 <code>git status</code>，能解释当前 dirty files。</span></label>
+          <label class="check-row"><input type="checkbox" data-progress="baseline-m1"><span>M1 验证通过：32 runs。</span></label>
+          <label class="check-row"><input type="checkbox" data-progress="baseline-m2"><span>M2 验证通过：56 runs / 60 action attempts。</span></label>
+        </section>
+
+        <section id="a01">
+          <div class="section-head">
+            <div class="step-number">02</div>
+            <div><h2>识别 A-01：同一攻击，不同边界</h2><p class="section-kicker">先看可视路径，再用报告和 JSONL 证明。</p></div>
+          </div>
+
+          <div class="boundary-lab" aria-labelledby="boundaryTitle">
+            <h3 id="boundaryTitle">Authorization Boundary Rail</h3>
+            <div class="scenario-tabs" role="tablist" aria-label="切换场景">
+              <button class="scenario-tab" type="button" role="tab" aria-selected="true" data-scenario="a01p0">A-01 / P0</button>
+              <button class="scenario-tab" type="button" role="tab" aria-selected="false" data-scenario="a01p3">A-01 / P3</button>
+              <button class="scenario-tab" type="button" role="tab" aria-selected="false" data-scenario="a05p3">A-05 / P3</button>
+            </div>
+
+            <div class="boundary-map" id="boundaryMap">
+              <div class="node" data-node="source"><strong>Untrusted</strong><span>工单中的恶意指令</span></div>
+              <div class="node" data-node="agent"><strong>Agent</strong><span>提出危险动作</span></div>
+              <div class="node" data-node="gateway"><strong>Gateway</strong><span>Task capability</span></div>
+              <div class="node" data-node="database"><strong>PostgreSQL</strong><span>实际执行边界</span></div>
+              <div class="node" data-node="result"><strong>Result</strong><span>数据进入 Context</span></div>
+              <div class="bypass-path" id="bypassPath"><span class="bypass-label">绕过 Gateway</span></div>
+            </div>
+
+            <div class="outcome" aria-live="polite">
+              <span class="outcome-badge" id="outcomeBadge">LEAK</span>
+              <p id="outcomeText">P0 没有确定性 deny。自由 SQL 到达 PostgreSQL，越权结果被返回。</p>
+            </div>
+          </div>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>比较 A-01 的 P0 与 P3</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>jq '.results[] |
+  select(.scenario_id=="A-01" and
+    (.profile_id=="P0" or .profile_id=="P3")) |
+  {scenario_id,profile_id,authorization_correct,attack_contained,artifact,steps}' \
+  artifacts/m2/report.json</code></pre>
+          </div>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>查看 P0 / P3 hash-linked evidence</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>jq -c '{event_id,event_type,decision,reason_code,control_stage,
+  result_row_count,forbidden_row_count,sensitive_plaintext_count,
+  prev_event_hash,event_hash}' artifacts/m2/runs/a-01-p0.jsonl
+
+jq -c '{event_id,event_type,decision,reason_code,control_stage,
+  result_row_count,forbidden_row_count,sensitive_plaintext_count,
+  prev_event_hash,event_hash}' artifacts/m2/runs/a-01-p3.jsonl</code></pre>
+          </div>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>定位 P3 deny（无需 rg）</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>grep -n -B 4 -A 4 'FREE_SQL_NOT_DELEGATED' gateway/policy.py</code></pre>
+          </div>
+
+          <div class="evidence-cards">
+            <div class="evidence-card"><b>Code pointer</b><small>哪一行产生 <code>FREE_SQL_NOT_DELEGATED</code>？</small></div>
+            <div class="evidence-card"><b>Execution proof</b><small>哪个 report/step 字段证明 query 没执行？</small></div>
+            <div class="evidence-card"><b>Causal link</b><small>decision、result 与 prev/event hash 如何相连？</small></div>
+          </div>
+
+          <label class="field-label" for="a01Notes">用自己的话记录 A-01/P0 与 A-01/P3 的差别</label>
+          <textarea id="a01Notes" data-save="a01Notes" placeholder="不要写“P3 更安全”。写清楚：哪个 enforcement point、哪个 decision、SQL 是否执行、数据是否返回。"></textarea>
+          <p class="save-hint">内容仅保存在这个浏览器的 localStorage，不会写入仓库。</p>
+
+          <label class="check-row"><input type="checkbox" data-progress="a01-code"><span>我能指出 P3 deny 的源码位置和 reason code。</span></label>
+          <label class="check-row"><input type="checkbox" data-progress="a01-evidence"><span>我能用 report + JSONL 证明 P0 leak 与 P3 containment。</span></label>
+        </section>
+
+        <section id="a05">
+          <div class="section-head">
+            <div class="step-number">03</div>
+            <div><h2>识别 A-05：绕过才暴露真实边界</h2><p class="section-kicker">P3 没有退化；攻击换了一条 P3 无权控制的路径。</p></div>
+          </div>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>比较 A-05 的 P0 与 P3</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>jq '.results[] |
+  select(.scenario_id=="A-05" and
+    (.profile_id=="P0" or .profile_id=="P3")) |
+  {scenario_id,profile_id,authorization_correct,attack_contained,artifact,steps}' \
+  artifacts/m2/report.json</code></pre>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric"><b>Gateway containment</b>只对经过 Gateway 的动作有决定权。</div>
+            <div class="metric"><b>Database enforcement</b>即使 Gateway、Agent framework 或 MCP router 被跳过，数据边界仍成立。</div>
+          </div>
+
+          <div class="quiz" data-quiz data-answer="b">
+            <p class="quiz-question">为什么 A-01/P3 被挡住，而 A-05/P3 仍泄漏？</p>
+            <div class="quiz-options">
+              <button class="quiz-option" type="button" data-choice="a">A. P3 的 policy 随机失效</button>
+              <button class="quiz-option" type="button" data-choice="b">B. A-05 绕过了 P3 所在的 Gateway，直接使用宽权限数据库路径</button>
+              <button class="quiz-option" type="button" data-choice="c">C. PostgreSQL 不支持任何授权控制</button>
+            </div>
+            <p class="quiz-feedback" aria-live="polite">先选一个答案，再查看反馈。</p>
+          </div>
+
+          <label class="field-label" for="p4Notes">P4 必须在 PostgreSQL 内保证什么？</label>
+          <textarea id="p4Notes" data-save="p4Notes" placeholder="用自己的话写。提示：non-owner/non-superuser、无 BYPASSRLS、task-bound principal、RLS/view/capability、保留 A-05 negative control。"></textarea>
+
+          <label class="check-row"><input type="checkbox" data-progress="a05-explain"><span>我能解释为什么 A-05/P3 leak 不是 P3 regression。</span></label>
+          <label class="check-row"><input type="checkbox" data-progress="p4-boundary"><span>我能说明 P4 相比 P3 新增的不可绕过保证。</span></label>
+        </section>
+
+        <section id="fixture">
+          <div class="section-head">
+            <div class="step-number">04</div>
+            <div><h2>修改一次 Fixture</h2><p class="section-kicker">预测在前，运行在后。主动修改是 owner gate 的核心。</p></div>
+          </div>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>建立临时本地分支</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>git switch -c walkthrough/m2-owner</code></pre>
+          </div>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>记录修改前的 M1 结果</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>jq '.results[] |
+  select(.scenario_id=="A-01" and
+    (.profile_id=="P0" or .profile_id=="P3")) |
+  {scenario_id,profile_id,target_decision,query_executed,returned_row_count,
+    forbidden_row_count,sensitive_plaintext_count,data_contained,artifact}' \
+  artifacts/m1/report.json</code></pre>
+          </div>
+
+          <p>打开 <code>harness/scenarios/m1.json</code>，找到 A-01，在攻击 SQL 末尾添加 <code>LIMIT 1</code>。先不要运行。</p>
+
+          <label class="field-label" for="prediction">运行前预测：P0、P3 的 decision 与数据指标分别会怎样？</label>
+          <textarea id="prediction" data-save="prediction" placeholder="至少写：target_decision、query_executed、returned_row_count、forbidden_row_count 中哪些预计变化，哪些预计不变。"></textarea>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>生成修改后的结果</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>make m1-test</code></pre>
+          </div>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>查看修改后的 P0 / P3 evidence</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>jq -c '{event_id,event_type,decision,reason_code,result_row_count,
+  forbidden_row_count,sensitive_plaintext_count,prev_event_hash,event_hash}' \
+  artifacts/m1/runs/a-01-p0.jsonl
+
+jq -c '{event_id,event_type,decision,reason_code,result_row_count,
+  forbidden_row_count,sensitive_plaintext_count,prev_event_hash,event_hash}' \
+  artifacts/m1/runs/a-01-p3.jsonl</code></pre>
+          </div>
+
+          <label class="field-label" for="observation">实测观察：哪些与预测一致，哪些不同？</label>
+          <textarea id="observation" data-save="observation" placeholder="记录变化的 row/data metrics，以及没有变化的 authorization decision。"></textarea>
+
+          <div class="command" data-command>
+            <div class="command-label"><span>恢复 frozen fixture 并重建干净基线</span><button class="copy-button" type="button">复制</button></div>
+            <pre><code>git diff -- harness/scenarios/m1.json
+git restore harness/scenarios/m1.json
+make m1-test
+git status --short --branch</code></pre>
+          </div>
+
+          <div class="notice danger"><b>不要提交临时 mutation：</b><code>LIMIT 1</code> 只用于证明你理解 oracle、target、scorer 与 evidence 之间的关系。</div>
+
+          <label class="check-row"><input type="checkbox" data-progress="fixture-predict"><span>我在运行前写下了预测。</span></label>
+          <label class="check-row"><input type="checkbox" data-progress="fixture-run"><span>我亲自修改 fixture、运行 M1 并比较了新旧 evidence。</span></label>
+          <label class="check-row"><input type="checkbox" data-progress="fixture-restore"><span>我恢复了 frozen fixture，M1 再次 PASS。</span></label>
+        </section>
+
+        <section id="explain">
+          <div class="section-head">
+            <div class="step-number">05</div>
+            <div><h2>自己讲明白</h2><p class="section-kicker">能复述机制，才说明你拥有这个实验。</p></div>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric"><b>authorization_correct</b>目标作出的 allow/deny 是否符合独立 oracle。</div>
+            <div class="metric"><b>attack_contained</b>攻击是否被挡在相关安全边界内。</div>
+            <div class="metric"><b>data_contained</b>未经授权的数据是否没有进入结果或 Context。</div>
+            <div class="metric"><b>evidence_chain_valid</b>观察到的事件链是否完整、一致、hash 可验证；它不等于控制有效。</div>
+          </div>
+
+          <div class="quiz" data-quiz data-answer="c">
+            <p class="quiz-question">一条 harness-observed evidence chain 验证通过，能够证明什么？</p>
+            <div class="quiz-options">
+              <button class="quiz-option" type="button" data-choice="a">A. 目标系统原生审计已经完整</button>
+              <button class="quiz-option" type="button" data-choice="b">B. 所有攻击都已经被阻断</button>
+              <button class="quiz-option" type="button" data-choice="c">C. Harness 观察并记录的链条内部一致，但不能制造目标系统未发出的 native evidence</button>
+            </div>
+            <p class="quiz-feedback" aria-live="polite">先选一个答案，再查看反馈。</p>
+          </div>
+
+          <label class="field-label" for="teachback">三分钟 teach-back：不用看原文，完整解释本实验</label>
+          <textarea id="teachback" data-save="teachback" placeholder="建议结构：A-01/P0 → A-01/P3 → A-05/P3 → LIMIT 1 实验 → P4 必须新增什么 → 当前证据限制。"></textarea>
+
+          <label class="check-row"><input type="checkbox" data-progress="teachback"><span>我能不照抄页面，独立讲清七个 owner questions。</span></label>
+        </section>
+
+        <section id="record">
+          <div class="section-head">
+            <div class="step-number">06</div>
+            <div><h2>形成你的完成记录</h2><p class="section-kicker">页面可以整理文字，但最终判断必须由你明确选择。</p></div>
+          </div>
+
+          <label class="field-label" for="leakPointer">A-01/P0 leak evidence pointer</label>
+          <input class="text-input" id="leakPointer" data-save="leakPointer" placeholder="例如：artifacts/m2/runs/a-01-p0.jsonl + 关键 event_id">
+
+          <label class="field-label" for="containPointer">A-01/P3 containment evidence pointer</label>
+          <input class="text-input" id="containPointer" data-save="containPointer" placeholder="例如：report field + JSONL event_id + reason_code">
+
+          <label class="field-label" for="bypassPointer">A-05/P3 Gateway-bypass evidence pointer</label>
+          <input class="text-input" id="bypassPointer" data-save="bypassPointer" placeholder="例如：artifacts/m2/runs/a-05-p3.jsonl + 关键 event_id">
+
+          <div class="decision-box">
+            <h3>Owner decision</h3>
+            <p>这不是评分题。根据你是否真的完成以上步骤，选择当前决定。</p>
+            <div class="decision-options">
+              <label><input type="radio" name="decision" value="M3 authorized" data-save-radio="decision">M3 authorized</label>
+              <label><input type="radio" name="decision" value="M3 remains locked" data-save-radio="decision">M3 remains locked</label>
+            </div>
+            <button class="primary-button" id="generateRecord" type="button">生成 Markdown 完成记录</button>
+            <p class="save-hint">生成记录不写文件、不 commit、不 push，也不会自动解锁 M3。</p>
+          </div>
+
+          <div class="record-output" id="recordOutput">
+            <div class="command">
+              <div class="command-label"><span>建议保存为 docs/owner-gates/YYYY-MM-DD-m2-to-m3-sam-completion.md</span><button class="copy-button" id="copyRecord" type="button">复制记录</button></div>
+              <pre><code id="recordText"></code></pre>
+            </div>
+          </div>
+
+          <label class="check-row"><input type="checkbox" data-progress="record"><span>我保存了自己的 dated completion note，并准备明确告诉协作者最终决定。</span></label>
+        </section>
+      </div>
+
+      <footer class="footnote">离线单文件教学页 · 不执行 shell · 不上传数据 · 输入保存在当前浏览器 localStorage · canonical gate 仍以同目录 Markdown walkthrough 为准</footer>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      const storagePrefix = "m2-owner-walkthrough:";
+      const toast = document.getElementById("toast");
+      let toastTimer;
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("show"), 1800);
+      }
+
+      function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          return navigator.clipboard.writeText(text);
+        }
+        const helper = document.createElement("textarea");
+        helper.value = text;
+        helper.setAttribute("readonly", "");
+        helper.style.position = "fixed";
+        helper.style.opacity = "0";
+        document.body.appendChild(helper);
+        helper.select();
+        const ok = document.execCommand("copy");
+        helper.remove();
+        return ok ? Promise.resolve() : Promise.reject(new Error("copy failed"));
+      }
+
+      document.querySelectorAll("[data-command]").forEach(block => {
+        const button = block.querySelector(".copy-button");
+        const code = block.querySelector("code");
+        button.addEventListener("click", () => {
+          copyText(code.textContent.trim())
+            .then(() => showToast("命令已复制"))
+            .catch(() => showToast("复制失败，请手动选择命令"));
+        });
+      });
+
+      const progressBoxes = [...document.querySelectorAll("[data-progress]")];
+      const progressText = document.getElementById("progressText");
+      const progressFill = document.getElementById("progressFill");
+
+      function updateProgress() {
+        const completed = progressBoxes.filter(box => box.checked).length;
+        progressText.textContent = `${completed} / ${progressBoxes.length}`;
+        progressFill.style.width = `${(completed / progressBoxes.length) * 100}%`;
+      }
+
+      progressBoxes.forEach(box => {
+        const key = storagePrefix + "check:" + box.dataset.progress;
+        box.checked = localStorage.getItem(key) === "true";
+        box.addEventListener("change", () => {
+          localStorage.setItem(key, String(box.checked));
+          updateProgress();
+        });
+      });
+      updateProgress();
+
+      document.querySelectorAll("[data-save]").forEach(field => {
+        const key = storagePrefix + "field:" + field.dataset.save;
+        field.value = localStorage.getItem(key) || "";
+        field.addEventListener("input", () => localStorage.setItem(key, field.value));
+      });
+
+      document.querySelectorAll("[data-save-radio]").forEach(radio => {
+        const key = storagePrefix + "radio:" + radio.dataset.saveRadio;
+        radio.checked = localStorage.getItem(key) === radio.value;
+        radio.addEventListener("change", () => {
+          if (radio.checked) localStorage.setItem(key, radio.value);
+        });
+      });
+
+      document.getElementById("resetProgress").addEventListener("click", () => {
+        if (!window.confirm("清除本页保存的勾选、笔记、答案和完成记录？仓库文件不会受影响。")) return;
+        Object.keys(localStorage)
+          .filter(key => key.startsWith(storagePrefix))
+          .forEach(key => localStorage.removeItem(key));
+        window.location.reload();
+      });
+
+      const scenarioData = {
+        a01p0: {
+          nodes: { source: "active-pass", agent: "active-pass", gateway: "active-pass", database: "active-pass", result: "active-pass" },
+          badge: "LEAK",
+          badgeClass: "",
+          text: "P0 没有确定性 deny。自由 SQL 到达 PostgreSQL，越权结果被返回。",
+          bypass: false
+        },
+        a01p3: {
+          nodes: { source: "active-pass", agent: "active-pass", gateway: "active-stop", database: "dim", result: "dim" },
+          badge: "CONTAINED",
+          badgeClass: "contained",
+          text: "P3 的 task capability 在 Gateway 拒绝 FREE_SQL_NOT_DELEGATED。查询没有执行，数据没有返回。",
+          bypass: false
+        },
+        a05p3: {
+          nodes: { source: "active-pass", agent: "active-pass", gateway: "dim", database: "active-pass", result: "active-pass" },
+          badge: "BYPASSED",
+          badgeClass: "bypassed",
+          text: "A-05 绕过 Gateway，直接到达宽权限 PostgreSQL role。P3 没有机会作决定，因此仍然泄漏。",
+          bypass: true
+        }
+      };
+
+      function showScenario(id) {
+        const data = scenarioData[id];
+        document.querySelectorAll(".scenario-tab").forEach(tab => {
+          tab.setAttribute("aria-selected", String(tab.dataset.scenario === id));
+        });
+        document.querySelectorAll("[data-node]").forEach(node => {
+          node.classList.remove("active-pass", "active-stop", "dim");
+          node.classList.add(data.nodes[node.dataset.node]);
+        });
+        const badge = document.getElementById("outcomeBadge");
+        badge.textContent = data.badge;
+        badge.className = "outcome-badge" + (data.badgeClass ? " " + data.badgeClass : "");
+        document.getElementById("outcomeText").textContent = data.text;
+        document.getElementById("bypassPath").classList.toggle("visible", data.bypass);
+      }
+
+      document.querySelectorAll(".scenario-tab").forEach(tab => {
+        tab.addEventListener("click", () => showScenario(tab.dataset.scenario));
+      });
+      showScenario("a01p0");
+
+      document.querySelectorAll("[data-quiz]").forEach((quiz, quizIndex) => {
+        const feedback = quiz.querySelector(".quiz-feedback");
+        quiz.querySelectorAll(".quiz-option").forEach(option => {
+          option.addEventListener("click", () => {
+            quiz.querySelectorAll(".quiz-option").forEach(item => item.classList.remove("correct", "wrong"));
+            const correct = option.dataset.choice === quiz.dataset.answer;
+            option.classList.add(correct ? "correct" : "wrong");
+            feedback.textContent = correct
+              ? "正确。请继续用报告和 evidence 证明，而不是只记住这个答案。"
+              : "还不准确。回到边界图，区分 Gateway 是否有机会参与决策。";
+            localStorage.setItem(storagePrefix + "quiz:" + quizIndex, option.dataset.choice);
+          });
+        });
+      });
+
+      function today() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, "0");
+        const d = String(now.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+
+      document.getElementById("generateRecord").addEventListener("click", () => {
+        const decision = document.querySelector('input[name="decision"]:checked');
+        if (!decision) {
+          showToast("先明确选择 owner decision");
+          return;
+        }
+        const get = id => document.getElementById(id).value.trim() || "[待 owner 填写]";
+        const record = `# ${today()} M2 to M3 owner walkthrough completion
+
+## Baseline
+
+- M1: [填写 PASS 结果]
+- M2: [填写 PASS 结果]
+- Worktree reviewed: [填写已确认的 dirty files]
+
+## Evidence pointers
+
+- A-01/P0 leak: ${get("leakPointer")}
+- A-01/P3 containment: ${get("containPointer")}
+- A-05/P3 Gateway bypass: ${get("bypassPointer")}
+
+## A-01 explanation
+
+${get("a01Notes")}
+
+## Fixture experiment
+
+### Prediction
+
+${get("prediction")}
+
+### Observed
+
+${get("observation")}
+
+## Required P4 database boundary
+
+${get("p4Notes")}
+
+## Owner teach-back
+
+${get("teachback")}
+
+## Owner decision
+
+**${decision.value}**
+
+This decision was selected explicitly by the repository owner after the hands-on walkthrough. The HTML page only organized the record; it did not execute tests or authorize M3.`;
+        document.getElementById("recordText").textContent = record;
+        document.getElementById("recordOutput").classList.add("visible");
+        localStorage.setItem(storagePrefix + "generatedRecord", record);
+        showToast("完成记录已生成，请检查后保存");
+      });
+
+      document.getElementById("copyRecord").addEventListener("click", () => {
+        copyText(document.getElementById("recordText").textContent)
+          .then(() => showToast("Markdown 记录已复制"))
+          .catch(() => showToast("复制失败，请手动选择记录"));
+      });
+
+      const savedRecord = localStorage.getItem(storagePrefix + "generatedRecord");
+      if (savedRecord) {
+        document.getElementById("recordText").textContent = savedRecord;
+        document.getElementById("recordOutput").classList.add("visible");
+      }
+    })();
+  </script>
+</body>
+</html>
