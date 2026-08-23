@@ -1,13 +1,17 @@
-# When AI Agents Get Database Access — a runnable PoC
+# Agent Database Security Labs
 
-A minimal, offline demonstration of the attack surface described in the article
-*"When AI Agents Get Database Access."* It shows a text-to-SQL support agent
-being hijacked by an instruction hidden in the data it reads, then the same
-agent hardened so the injection can no longer steer its actions.
+A clean-room, runnable lab series for **Agent Identity x Non-bypassable Database
+Authorization**. The current public baseline starts with a minimal SQLite
+text-to-SQL demonstration, then uses PostgreSQL forced replay to compare P0-P3
+controls across normal and attack scenarios.
 
 Positioning: a clean-room asset for **Cloud Database Security x AI Agent
 Security**, focused on translating agent authority into enforceable database
 authorization and independently verifiable evidence.
+
+The current result proves intended-path Gateway containment and preserves a
+Gateway-bypass counterexample. It does not claim that P4 database enforcement
+or P5 lifecycle controls are implemented.
 
 **No API key, no network, no dependencies.** Pure Python 3 standard library +
 a local SQLite file with obviously-synthetic data. Nothing here touches a real
@@ -31,9 +35,10 @@ ticket body straight into its working instruction:
   dumps the top accounts and their emails. The **data** rewrote the agent's
   **actions**.
 
-**Hardened agent** — same task, four controls from the blueprint each firing:
-1. **Task-scoped access** — this task may read only the customer joined to its
-   own ticket, never the whole `customers` table.
+**Gateway-layer teaching example** — same task, four controls from the blueprint
+each firing on the intended path:
+1. **Task-scoped proxy policy** — this task may read only the customer joined
+   to its own ticket when the query passes through `PolicyProxy`.
 2. **Policy proxy** — every proposed query is checked before it runs; a bulk
    scan of `customers` is refused.
 3. **Default masking** — the `email` column returns masked (`b***@example.com`)
@@ -51,16 +56,22 @@ at the policy boundary.
 | `seed_db.py` | Builds `demo.db` with synthetic customers + tickets |
 | `mock_llm.py` | Offline stand-in for a text-to-SQL agent (naive by design) |
 | `vulnerable_agent.py` | Standing broad credential, trusts ticket body as intent |
-| `secure_agent.py` | Task-scoped creds + policy proxy + masking + audit |
+| `secure_agent.py` | Gateway-layer proxy policy + masking + illustrative audit |
 
 ## Honest limits (say this out loud in talks)
 
 - The "LLM" is a rule-based stub, so the *injection* is deterministic — real
   models fail less predictably. The point is the **architecture**, not the model.
-- The policy proxy here uses simple string checks for readability. A production
-  proxy parses SQL into an AST and matches against an explicit allowlist.
-- This defends the **database boundary**. It does not "solve" prompt injection —
-  it makes injection unable to cross into unauthorized data. That's the thesis.
+- `secure_agent.py` still opens the same broad SQLite database file and relies
+  on a string-matching `PolicyProxy`. It demonstrates an intended-path Gateway
+  control; it is not an independent database authorization boundary.
+- The M2 forced-replay evidence makes that limitation testable: P3 contains the
+  four Gateway-mediated attacks, while A-05 bypasses the Gateway and still
+  leaks through the broad PostgreSQL role.
+- P4 database enforcement and P5 lifecycle controls are not implemented. The
+  thesis is that the database must enforce authority independently of the
+  model, framework, tool router, or MCP Gateway; the current repo has not yet
+  proved that full claim.
 
 ## For the article / a live demo
 
@@ -68,11 +79,17 @@ Open with `vulnerable_agent.py` (the leak), then run `secure_agent.py` (the
 block) side by side. It's ~15 seconds of terminal output and lands the whole
 argument before a single slide.
 
+## Public evidence snapshots
+
+- [`article-01-2026-07-18`](https://github.com/samzys/agent-db-security-labs/tree/article-01-2026-07-18)
+  preserves the exact source commit for the first published SQLite experiment.
+- [`article-02-m2-clean-2026-08-15`](https://github.com/samzys/agent-db-security-labs/tree/article-02-m2-clean-2026-08-15)
+  is the clean public M2 reproduction baseline: 56 runs and 60 action attempts.
+
 ## PostgreSQL M0 feasibility spike
 
-The `feat/postgres-m0` branch starts the next experiment without claiming that
-the full control ladder exists yet. It uses a repository-local PostgreSQL 17
-cluster and validates the riskiest assumptions first:
+The M0 experiment uses a repository-local PostgreSQL 17 cluster and validates
+the riskiest assumptions without claiming that the full control ladder exists:
 
 ```bash
 make m0-test
