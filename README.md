@@ -1,5 +1,15 @@
 # Agent Database Security Labs
 
+## Jev security-triage evaluation
+
+An independent [Jev / ATBench reproduction package](experiments/jev-atbench/README.md)
+is available alongside the database labs. It replays saved numerical model
+outputs using only Python's standard library; it does not execute agents or call
+model APIs. Start with the [hands-on tutorial](experiments/jev-atbench/TUTORIAL-ZH.md)
+or inspect the [methods and limitations](experiments/jev-atbench/METHODS.md).
+The evaluation annotations are derived from public ATBench data, not the
+synthetic database fixtures used below; their attribution is separate.
+
 A clean-room, runnable lab series for **Agent Identity x Non-bypassable Database
 Authorization**. The current public baseline starts with a minimal SQLite
 text-to-SQL demonstration, then uses PostgreSQL forced replay to compare P0-P3
