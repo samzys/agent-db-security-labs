@@ -10,6 +10,17 @@ Use Python 3.10+; there are no third-party dependencies.
 
 ## Start here
 
+This release is on an independent branch, not merged into `main`. For a fresh copy:
+
+```sh
+git clone --branch feat/jev-atbench-replay --single-branch \
+  https://github.com/samzys/agent-db-security-labs.git
+cd agent-db-security-labs
+```
+
+For a citation, use the immutable commit link rather than assuming this branch
+will never change. The included manifest locks this evaluation's numeric files.
+
 From the repository root:
 
 ```sh
