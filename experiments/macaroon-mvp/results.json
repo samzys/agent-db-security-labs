@@ -1,0 +1,545 @@
+{
+  "contract": "macaroon-learning-mvp-v1.1",
+  "generated_at_utc": "2026-10-04T12:19:49.496221+00:00",
+  "source_sha256": "b870274c3d3958cd4a099b06fd8443254e209e6d3a0be32cd0a86d1335e28b14",
+  "python": "3.14.6",
+  "dependencies": {
+    "pymacaroons": "0.13.0",
+    "PyNaCl": "1.6.2",
+    "cffi": "2.1.1",
+    "pycparser": "3.0",
+    "six": "1.17.0"
+  },
+  "scope": "single-process, first-party caveats, synthetic data; no identity proof",
+  "parent_caveats": [
+    "ticket = 101"
+  ],
+  "child_caveats": [
+    "ticket = 101",
+    "operation = read"
+  ],
+  "read_only_parent_delegation": {
+    "tested_domain": {
+      "ticket": "101",
+      "operations": [
+        "read",
+        "write"
+      ]
+    },
+    "parent_issued_read_only": true,
+    "parent_caveats": [
+      "ticket = 101",
+      "operation = read"
+    ],
+    "normal_child_caveats": [
+      "ticket = 101",
+      "operation = read",
+      "operation = read"
+    ],
+    "attempted_write_child_caveats": [
+      "ticket = 101",
+      "operation = read",
+      "operation = write"
+    ],
+    "observed_allowed_operations": {
+      "parent": [
+        "read"
+      ],
+      "normal_child": [
+        "read"
+      ],
+      "attempted_write_child": []
+    },
+    "both_children_are_subsets_in_tested_domain": true
+  },
+  "cases": [
+    {
+      "case_id": "C01",
+      "description": "父凭据写入 101",
+      "token_variant": "parent",
+      "holder_label_not_authenticated": "agent-a",
+      "request": {
+        "ticket": "101",
+        "operation": "write"
+      },
+      "expected": {
+        "decision": "ALLOW",
+        "data": {
+          "id": "101",
+          "status": "closed"
+        },
+        "state_after": {
+          "101": "closed",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "ALLOW",
+        "reason": "VERIFIED",
+        "data": {
+          "id": "101",
+          "status": "closed"
+        }
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "closed",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C02",
+      "description": "子凭据读取 101",
+      "token_variant": "child",
+      "holder_label_not_authenticated": "worker-b",
+      "request": {
+        "ticket": "101",
+        "operation": "read"
+      },
+      "expected": {
+        "decision": "ALLOW",
+        "data": {
+          "id": "101",
+          "status": "open"
+        },
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "ALLOW",
+        "reason": "VERIFIED",
+        "data": {
+          "id": "101",
+          "status": "open"
+        }
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C03",
+      "description": "子凭据尝试写入",
+      "token_variant": "child",
+      "holder_label_not_authenticated": "worker-b",
+      "request": {
+        "ticket": "101",
+        "operation": "write"
+      },
+      "expected": {
+        "decision": "DENY",
+        "data": null,
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "DENY",
+        "reason": "VERIFICATION_FAILED",
+        "data": null
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C04",
+      "description": "子凭据改读 102",
+      "token_variant": "child",
+      "holder_label_not_authenticated": "worker-b",
+      "request": {
+        "ticket": "102",
+        "operation": "read"
+      },
+      "expected": {
+        "decision": "DENY",
+        "data": null,
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "DENY",
+        "reason": "VERIFICATION_FAILED",
+        "data": null
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C05",
+      "description": "追加 write 想覆盖 read",
+      "token_variant": "contradictory",
+      "holder_label_not_authenticated": "worker-b",
+      "request": {
+        "ticket": "101",
+        "operation": "write"
+      },
+      "expected": {
+        "decision": "DENY",
+        "data": null,
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "DENY",
+        "reason": "VERIFICATION_FAILED",
+        "data": null
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C06",
+      "description": "删掉 read 限制后写入",
+      "token_variant": "tampered",
+      "holder_label_not_authenticated": "worker-b",
+      "request": {
+        "ticket": "101",
+        "operation": "write"
+      },
+      "expected": {
+        "decision": "DENY",
+        "data": null,
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "DENY",
+        "reason": "VERIFICATION_FAILED",
+        "data": null
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C07",
+      "description": "保留父凭据仍可写入",
+      "token_variant": "parent",
+      "holder_label_not_authenticated": "agent-a",
+      "request": {
+        "ticket": "101",
+        "operation": "write"
+      },
+      "expected": {
+        "decision": "ALLOW",
+        "data": {
+          "id": "101",
+          "status": "closed"
+        },
+        "state_after": {
+          "101": "closed",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "ALLOW",
+        "reason": "VERIFIED",
+        "data": {
+          "id": "101",
+          "status": "closed"
+        }
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "closed",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C08",
+      "description": "他人拿到相同子凭据读取",
+      "token_variant": "child-copy",
+      "holder_label_not_authenticated": "holder-x",
+      "request": {
+        "ticket": "101",
+        "operation": "read"
+      },
+      "expected": {
+        "decision": "ALLOW",
+        "data": {
+          "id": "101",
+          "status": "open"
+        },
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "ALLOW",
+        "reason": "VERIFIED",
+        "data": {
+          "id": "101",
+          "status": "open"
+        }
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C09",
+      "description": "最初只读的父凭据：读",
+      "token_variant": "read-only-parent",
+      "holder_label_not_authenticated": "readonly-agent",
+      "request": {
+        "ticket": "101",
+        "operation": "read"
+      },
+      "expected": {
+        "decision": "ALLOW",
+        "data": {
+          "id": "101",
+          "status": "open"
+        },
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "ALLOW",
+        "reason": "VERIFIED",
+        "data": {
+          "id": "101",
+          "status": "open"
+        }
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C10",
+      "description": "最初只读的父凭据：写",
+      "token_variant": "read-only-parent",
+      "holder_label_not_authenticated": "readonly-agent",
+      "request": {
+        "ticket": "101",
+        "operation": "write"
+      },
+      "expected": {
+        "decision": "DENY",
+        "data": null,
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "DENY",
+        "reason": "VERIFICATION_FAILED",
+        "data": null
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C11",
+      "description": "正常只读子凭据：读",
+      "token_variant": "read-only-child",
+      "holder_label_not_authenticated": "readonly-worker",
+      "request": {
+        "ticket": "101",
+        "operation": "read"
+      },
+      "expected": {
+        "decision": "ALLOW",
+        "data": {
+          "id": "101",
+          "status": "open"
+        },
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "ALLOW",
+        "reason": "VERIFIED",
+        "data": {
+          "id": "101",
+          "status": "open"
+        }
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C12",
+      "description": "正常只读子凭据：写",
+      "token_variant": "read-only-child",
+      "holder_label_not_authenticated": "readonly-worker",
+      "request": {
+        "ticket": "101",
+        "operation": "write"
+      },
+      "expected": {
+        "decision": "DENY",
+        "data": null,
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "DENY",
+        "reason": "VERIFICATION_FAILED",
+        "data": null
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C13",
+      "description": "父只读却给子追加 write：读",
+      "token_variant": "attempted-write-child",
+      "holder_label_not_authenticated": "readonly-worker",
+      "request": {
+        "ticket": "101",
+        "operation": "read"
+      },
+      "expected": {
+        "decision": "DENY",
+        "data": null,
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "DENY",
+        "reason": "VERIFICATION_FAILED",
+        "data": null
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    },
+    {
+      "case_id": "C14",
+      "description": "父只读却给子追加 write：写",
+      "token_variant": "attempted-write-child",
+      "holder_label_not_authenticated": "readonly-worker",
+      "request": {
+        "ticket": "101",
+        "operation": "write"
+      },
+      "expected": {
+        "decision": "DENY",
+        "data": null,
+        "state_after": {
+          "101": "open",
+          "102": "open"
+        }
+      },
+      "actual": {
+        "decision": "DENY",
+        "reason": "VERIFICATION_FAILED",
+        "data": null
+      },
+      "state_before": {
+        "101": "open",
+        "102": "open"
+      },
+      "state_after": {
+        "101": "open",
+        "102": "open"
+      },
+      "matches_prediction": true
+    }
+  ],
+  "summary": {
+    "total": 14,
+    "matched": 14
+  }
+}
